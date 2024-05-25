@@ -1,82 +1,62 @@
-import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs';
+import { NextRequest, NextResponse } from 'next/server';
 import prismadb from '@/lib/prismadb';
+import { auth } from '@clerk/nextjs';
 
-// Gestion des requêtes GET
-export async function GET(req: Request, { params }: { params: { productId: string } }) {
+interface Params {
+  productId: string;
+  storeId: string;
+}
+
+export async function GET(req: NextRequest, { params }: { params: Params }) {
   try {
     const product = await prismadb.product.findUnique({
       where: { id: params.productId },
       include: {
-        images: true,
         category: true,
-        color: true,
         size: true,
+        color: true,
+        images: true,
       },
     });
+    console.log('Fetched product:', product); // Ajoutez cette ligne pour vérifier les données
 
-    if (!product) {
-      return new NextResponse('Produit non trouvé', { status: 404 });
-    }
-
-    return NextResponse.json(product, { status: 200 });
+    return NextResponse.json(product);
   } catch (error) {
-    console.error('[PRODUCT_GET]', error);
+    console.error('[PRODUCT_API]', error);
     return new NextResponse('Erreur interne du serveur', { status: 500 });
   }
 }
 
-// Gestion des requêtes POST
-export async function POST(req: Request, { params }: { params: { storeId: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Params }) {
   try {
     const { userId } = auth();
-    const body = await req.json();
-
-    const {
-      name,
-      price,
-      categoryId,
-      colorId,
-      sizeId,
-      images,
-      isFeatured,
-      isArchived,
-    } = body;
-
     if (!userId) {
-      return new NextResponse('Non autorisé', { status: 401 });
+      return new NextResponse('Non authentifié', { status: 401 });
     }
 
-    if (!name || !price || !categoryId || !colorId || !sizeId || !images || !images.length) {
-      return new NextResponse('Tous les champs sont obligatoires', { status: 400 });
-    }
-
-    if (!params.storeId) {
-      return new NextResponse("L'identifiant de la boutique est réquis", { status: 400 });
-    }
+    const body = await req.json();
+    const { name, price, categoryId, colorId, sizeId, images, isFeatured, isArchived } = body;
 
     const storeByUserId = await prismadb.store.findFirst({
-      where: {
-        id: params.storeId,
-        userId,
-      },
+      where: { id: params.storeId, userId },
     });
 
     if (!storeByUserId) {
       return new NextResponse('Non autorisé', { status: 403 });
     }
 
-    const product = await prismadb.product.create({
+    const product = await prismadb.product.update({
+      where: { id: params.productId },
       data: {
         name,
         price,
-        isFeatured,
-        isArchived,
         categoryId,
         colorId,
         sizeId,
-        storeId: params.storeId,
+        isFeatured,
+        isArchived,
         images: {
+          deleteMany: {},
           createMany: {
             data: images.map((image: { url: string }) => ({ url: image.url })),
           },
@@ -84,9 +64,35 @@ export async function POST(req: Request, { params }: { params: { storeId: string
       },
     });
 
-    return NextResponse.json(product, { status: 201 });
+    return NextResponse.json(product);
   } catch (error) {
-    console.log('[PRODUCTS_POST]', error);
+    console.error('[PRODUCT_API]', error);
+    return new NextResponse('Erreur interne du serveur', { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest, { params }: { params: Params }) {
+  try {
+    const { userId } = auth();
+    if (!userId) {
+      return new NextResponse('Non authentifié', { status: 401 });
+    }
+
+    const storeByUserId = await prismadb.store.findFirst({
+      where: { id: params.storeId, userId },
+    });
+
+    if (!storeByUserId) {
+      return new NextResponse('Non autorisé', { status: 403 });
+    }
+
+    await prismadb.product.delete({
+      where: { id: params.productId },
+    });
+
+    return new NextResponse(null, { status: 204 });
+  } catch (error) {
+    console.error('[PRODUCT_API]', error);
     return new NextResponse('Erreur interne du serveur', { status: 500 });
   }
 }

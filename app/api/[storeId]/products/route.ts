@@ -81,16 +81,21 @@ export async function POST(
   }
 }
 
-export async function GET(req: Request, { params }: { params: { storeId: string } }) {
+export async function GET(
+  req: Request,
+  { params }: { params: { storeId: string } }
+) {
   try {
-    const { searchParams } = new URL(req.url);
-    const categoryId = searchParams.get('categoryId') || undefined;
-    const colorId = searchParams.get('colorId') || undefined;
-    const sizeId = searchParams.get('sizeId') || undefined;
-    const isFeatured = searchParams.get('isFeatured') === 'true';
+    const { searchParams } = new URL(req.url)
+    const categoryId = searchParams.get('categoryId') || undefined
+    const colorId = searchParams.get('colorId') || undefined
+    const sizeId = searchParams.get('sizeId') || undefined
+    const isFeatured = searchParams.get('isFeatured')
 
     if (!params.storeId) {
-      return new NextResponse("L'identifiant de la boutique est réquis", { status: 400 });
+      return new NextResponse("L'identifiant de la boutique est réquis", {
+        status: 400,
+      })
     }
 
     const products = await prismadb.product.findMany({
@@ -99,7 +104,7 @@ export async function GET(req: Request, { params }: { params: { storeId: string 
         categoryId,
         colorId,
         sizeId,
-        isFeatured: isFeatured || undefined,
+        isFeatured: isFeatured ? true : undefined,
         isArchived: false,
       },
       include: {
@@ -111,11 +116,11 @@ export async function GET(req: Request, { params }: { params: { storeId: string 
       orderBy: {
         createdAt: 'desc',
       },
-    });
+    })
 
-    return NextResponse.json(products, { status: 200 });
+    return NextResponse.json(products, { status: 200 })
   } catch (error) {
-    console.log('[PRODUCTS_GET]', error);
-    return new NextResponse('Erreur interne du serveur', { status: 500 });
+    console.log('[PRODUCTS_GET]', error)
+    return new NextResponse('Erreur interne du serveur', { status: 500 })
   }
 }

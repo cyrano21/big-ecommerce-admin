@@ -1,13 +1,11 @@
 'use client'
 
 import React, { useState } from 'react'
-
 import * as z from 'zod'
 import { Category, Color, Image, Product, Size } from '@prisma/client'
 import { Trash } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-
 import { Heading } from '@/components/ui/heading'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -70,10 +68,11 @@ export const ProductForm: React.FC<ProductFormProps> = ({
 
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
 
   const title = initialData ? 'Modifier le produit' : 'Créer un produit'
   const description = initialData
-    ? 'Modifier un  produit'
+    ? 'Modifier un produit'
     : 'Créer un nouveau produit'
   const toastMessage = initialData
     ? 'Produit mis à jour avec succès.'
@@ -100,6 +99,12 @@ export const ProductForm: React.FC<ProductFormProps> = ({
   })
 
   const onSubmit = async (data: ProductFormValues) => {
+    if (uploading) {
+      toast.error(
+        "Veuillez attendre que le téléchargement de l'image soit terminé."
+      )
+      return
+    }
     try {
       setLoading(true)
 
@@ -186,16 +191,18 @@ export const ProductForm: React.FC<ProductFormProps> = ({
               <FormItem>
                 <FormLabel className="mb-2">Images</FormLabel>
                 <ImagesUpload
-                  value={field.value.map((img) => img.url)} // Assurez-vous que field.value est bien un tableau de strings
+                  value={field.value.map((img) => img.url)}
                   onChange={(newUrls) =>
                     field.onChange(newUrls.map((url) => ({ url })))
-                  } // Convertit un tableau de chaînes en tableau d'objets
+                  }
                   onRemove={(urlToRemove) => {
                     const newImages = field.value.filter(
                       (img) => img.url !== urlToRemove
                     )
                     field.onChange(newImages)
                   }}
+                  onUploadStart={() => setUploading(true)}
+                  onUploadEnd={() => setUploading(false)}
                   disabled={loading}
                 />
                 <FormMessage />
@@ -349,7 +356,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({
                   <div className="space-y-1 leading-none">
                     <FormLabel>En vedette</FormLabel>
                     <FormDescription>
-                      Ce produit apparaîtra sur la page d&#39;accueil
+                      Ce produit apparaîtra sur la page d&apos;accueil
                     </FormDescription>
                   </div>
                 </FormItem>
@@ -370,14 +377,18 @@ export const ProductForm: React.FC<ProductFormProps> = ({
                   <div className="space-y-1 leading-none">
                     <FormLabel>Masqué</FormLabel>
                     <FormDescription>
-                      ce produit n&#39;apparaîtra nulle part dans la boutique.
+                      ce produit n&apos;apparaîtra nulle part dans la boutique.
                     </FormDescription>
                   </div>
                 </FormItem>
               )}
             />
           </div>
-          <Button disabled={loading} className="ml-auto" type="submit">
+          <Button
+            disabled={loading || uploading}
+            className="ml-auto"
+            type="submit"
+          >
             {action}
           </Button>
         </form>

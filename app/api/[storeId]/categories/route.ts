@@ -1,89 +1,68 @@
-import { NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs'
-import prismadb from '@/lib/prismadb'
+// pages/api/categories/index.ts
+import { NextApiRequest, NextApiResponse } from 'next';
+import prismadb from '@/lib/prismadb';
+import { auth } from '@clerk/nextjs';
+import corsMiddleware from '@/lib/cors';
 
-export async function POST(
-  req: Request,
-  { params }: { params: { storeId: string } }
-) {
-  try {
-    const { userId } = auth()
-    const body = await req.json()
-    const { name, billboardId } = body
 
-    if (!userId) {
-      return new NextResponse('Non autorisé', { status: 401 })
+export async function POST(req: NextApiRequest, res: NextApiResponse) {
+  await corsMiddleware(req, res, async () => {
+    try {
+      const { userId } = auth();
+      const body = await req.body;
+      const { name, billboardId } = body;
+
+      if (!userId) {
+        return res.status(401).json('Non autorisé');
+      }
+
+      if (!name) {
+        return res.status(400).json('Le nom est obligatoire');
+      }
+
+      if (!billboardId) {
+        return res.status(400).json("L'ID de la catégorie est réquis");
+      }
+
+      const storeByUserId = await prismadb.store.findFirst({
+        where: { id: req.query.storeId as string, userId },
+      });
+
+      if (!storeByUserId) {
+        return res.status(403).json('Non autorisé');
+      }
+
+      const category = await prismadb.category.create({
+        data: {
+          name,
+          billboardId,
+          storeId: req.query.storeId as string,
+        },
+      });
+
+      return res.status(200).json(category);
+    } catch (error) {
+      console.log('[CATEGORIES_POST]', error);
+      return res.status(500).json('Erreur interne du serveur');
     }
-
-    if (!name) {
-      return new NextResponse('Le nom est obligatoire', {
-        status: 400,
-      })
-    }
-
-    if (!billboardId) {
-      return new NextResponse("L'ID de la catégorie est réquis", {
-        status: 400,
-      })
-    }
-
-    if (!params.storeId) {
-      return new NextResponse("L'identifiant de la boutique est réquis", {
-        status: 400,
-      })
-    }
-
-    const storeByUserId = await prismadb.store.findFirst({
-      where: {
-        id: params.storeId,
-        userId,
-      },
-    })
-
-    if (!storeByUserId) {
-      return new NextResponse('Non autorisé', {
-        status: 403,
-      })
-    }
-
-    const category = await prismadb.category.create({
-      data: {
-        name,
-        billboardId,
-        storeId: params.storeId,
-      },
-    })
-
-    return NextResponse.json(category)
-  } catch (error) {
-    console.log('[CATEGORIES_POST]', error)
-    return new NextResponse('Erreur interne du serveur', { status: 500 })
-  }
+  });
 }
 
-export async function GET(
-  _req: Request,
-  { params }: { params: { storeId: string } }
-) {
-  try {
-    console.log('Environment Store URL:', process.env.NEXT_PUBLIC_API_URL)
-    console.log('Requested Store ID:', params.storeId)
+export async function GET(req: NextApiRequest, res: NextApiResponse) {
+  await corsMiddleware(req, res, async () => {
+    try {
+      if (!req.query.storeId) {
+        return res.status(400).json("L'identifiant de la boutique est réquis");
+      }
 
-    if (!params.storeId) {
-      return new NextResponse("L'identifiant de la boutique est réquis", {
-        status: 400,
-      })
+      const categories = await prismadb.category.findMany({
+        where: { storeId: req.query.storeId as string },
+      });
+
+      return res.status(200).json(categories);
+    } catch (error) {
+      console.log('[CATEGORIES_GET]', error);
+      return res.status(500).json('Erreur interne du serveur');
     }
-
-    const categories = await prismadb.category.findMany({
-      where: {
-        storeId: params.storeId,
-      },
-    })
-
-    return NextResponse.json(categories)
-  } catch (error) {
-    console.log('[CATEGORIES_GET]', error)
-    return new NextResponse('Erreur interne du serveur', { status: 500 })
-  }
+  });
 }

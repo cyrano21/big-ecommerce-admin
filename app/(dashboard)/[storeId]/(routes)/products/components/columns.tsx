@@ -1,5 +1,3 @@
-'use client'
-
 import { ColumnDef } from '@tanstack/react-table'
 import { CellAction } from './cell-action'
 import Image from 'next/image'
@@ -12,7 +10,7 @@ export type ProductColumn = {
   size: string
   category: string
   color: string
-  images: string
+  images: { url: string }[]
   isFeatured: boolean
   isArchived: boolean
   createdAt: string
@@ -82,19 +80,33 @@ export const columns: ColumnDef<ProductColumn>[] = [
     accessorKey: 'images',
     header: 'Image',
     cell: (info) => {
-      const imageUrl = info.getValue() as string | undefined
-      return imageUrl ? (
+      const images = info.getValue() as { url: string }[]
+      console.log('images:', images)
+
+      // Vérifier si images est bien un tableau
+      if (!Array.isArray(images)) {
+        console.error('images is not an array:', images)
+        return <div>Pas d&apos;image</div>
+      }
+
+      // Récupérer la première URL valide
+      const firstImageUrl = images.length > 0 ? images[0].url : null
+      console.log('firstImageUrl:', firstImageUrl)
+
+      if (!firstImageUrl) return <div>Pas d&apos;image</div>
+
+      return (
         <div className="imageContainer">
           <Image
             className="productImage"
-            src={imageUrl}
+            src={firstImageUrl}
             alt="Product"
             width={40}
             height={40}
             layout="fixed"
           />
         </div>
-      ) : null
+      )
     },
   },
   {

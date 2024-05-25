@@ -1,24 +1,53 @@
+import prismadb from '@/lib/prismadb';
 import { NextResponse } from 'next/server'
-import prismadb from '../../../../../../lib/prismadb'
 
-export async function POST(
-  _req: Request,
+
+export async function PATCH(
+  req: Request,
   { params }: { params: { storeId: string; productId: string } }
 ) {
-  const { productId } = params
-
   try {
+    const { productId } = params
+
+    if (!productId) {
+      return new NextResponse('Product ID is required', { status: 400 })
+    }
+
+    const {
+      name,
+      price,
+      categoryId,
+      colorId,
+      sizeId,
+      images,
+      isFeatured,
+      isArchived,
+    } = await req.json()
+
     const product = await prismadb.product.update({
       where: { id: productId },
       data: {
-        stock: {
-          increment: 1,
+        name,
+        price,
+        categoryId,
+        colorId,
+        sizeId,
+        isFeatured,
+        isArchived,
+        images: {
+          deleteMany: {}, // Supprime les anciennes images
+          createMany: {
+            data: images.map((image: { url: string }) => ({
+              url: image.url,
+            })),
+          },
         },
       },
     })
+
     return NextResponse.json(product)
   } catch (error) {
-    console.error(error)
-    return new NextResponse('Failed to increase stock', { status: 500 })
+    console.error('[PRODUCT_PATCH]', error)
+    return new NextResponse('Failed to update product', { status: 500 })
   }
 }

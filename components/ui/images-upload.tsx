@@ -1,8 +1,5 @@
-'use client'
-
 import React from 'react'
 import Script from 'next/script'
-
 import { Trash } from 'lucide-react'
 import Image from 'next/image'
 import { Button } from './button'
@@ -12,6 +9,8 @@ interface ImageUploadProps {
   onChange: (urls: string[]) => void
   onRemove: (url: string) => void
   value: string[]
+  onUploadStart: () => void
+  onUploadEnd: () => void
 }
 
 const ImagesUpload: React.FC<ImageUploadProps> = ({
@@ -19,13 +18,15 @@ const ImagesUpload: React.FC<ImageUploadProps> = ({
   onChange,
   onRemove,
   value,
+  onUploadStart,
+  onUploadEnd,
 }) => {
   const handleSuccess = (info: { secure_url: string }) => {
     onChange([...value, info.secure_url])
+    onUploadEnd() // Signal that upload has ended
   }
 
   const openCloudinaryWidget = () => {
-    // Assurer que les valeurs pour cloudName et uploadPreset sont toujours définies
     const cloudName =
       process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'default_cloud_name'
     const uploadPreset =
@@ -37,6 +38,8 @@ const ImagesUpload: React.FC<ImageUploadProps> = ({
       return
     }
 
+    onUploadStart()
+
     const myWidget = window.cloudinary.createUploadWidget(
       {
         cloudName: cloudName,
@@ -45,6 +48,9 @@ const ImagesUpload: React.FC<ImageUploadProps> = ({
       (error: any, result: { event: string; info: { secure_url: string } }) => {
         if (!error && result && result.event === 'success') {
           handleSuccess(result.info)
+        } else if (error) {
+          console.error('Upload error:', error)
+          onUploadEnd() // Ensure to call onUploadEnd in case of error
         }
       }
     )
@@ -84,7 +90,7 @@ const ImagesUpload: React.FC<ImageUploadProps> = ({
           onClick={openCloudinaryWidget}
           className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
         >
-          Upload Image
+          Télécharger une image
         </Button>
       </div>
     </>
