@@ -15,8 +15,7 @@ export async function POST(
       description,
       price,
       categoryId,
-      colorId,
-      sizeId,
+      variations,
       images,
       isFeatured,
       isArchived,
@@ -31,12 +30,10 @@ export async function POST(
       !description ||
       !price ||
       !categoryId ||
-      !colorId ||
-      !sizeId ||
       !images ||
       !images.length
     ) {
-      return new NextResponse('Tous les champs sont obligatoires', {
+      return new NextResponse('Les champs nom, description, prix, catégorie et images sont obligatoires', {
         status: 400,
       })
     }
@@ -66,15 +63,34 @@ export async function POST(
         isFeatured,
         isArchived,
         categoryId,
-        colorId,
-        sizeId,
         storeId: params.storeId,
         images: {
           createMany: {
             data: images.map((image: { url: string }) => ({ url: image.url })),
           },
         },
+        ...(variations && variations.length > 0 && {
+          variations: {
+            createMany: {
+              data: variations.map((variation: { colorId: string, sizeId: string, stock: number }) => ({
+                colorId: variation.colorId,
+                sizeId: variation.sizeId,
+                stock: variation.stock
+              }))
+            }
+          }
+        })
       },
+      include: {
+        variations: {
+          include: {
+            color: true,
+            size: true
+          }
+        },
+        category: true,
+        images: true
+      }
     })
 
     return NextResponse.json(product, { status: 201 })
@@ -128,16 +144,24 @@ export async function GET(
       where: {
         storeId: params.storeId,
         categoryId,
-        colorId,
-        sizeId,
+        variations: colorId || sizeId ? {
+          some: {
+            ...(colorId ? { colorId } : {}),
+            ...(sizeId ? { sizeId } : {})
+          }
+        } : undefined,
         isFeatured: isFeatured ? true : undefined,
         isArchived: false,
       },
       include: {
         images: true,
         category: true,
-        color: true,
-        size: true,
+        variations: {
+          include: {
+            color: true,
+            size: true
+          }
+        }
       },
       orderBy: {
         createdAt: 'desc',

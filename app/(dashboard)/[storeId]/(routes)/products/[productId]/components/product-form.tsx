@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import * as z from 'zod';
-import { Category, Color, Image, Product, Size } from '@prisma/client';
 import { Trash } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -33,6 +32,70 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import ImagesUpload from '@/components/ui/images-upload';
 import { Textarea } from '@/components/ui/textarea';
+import { VariationsForm } from "@/components/variations-form";
+
+// Types personnalisés pour remplacer les types Prisma
+interface Category {
+  id: string;
+  name: string;
+  storeId: string;
+  billboard?: {
+    id: string;
+    label: string;
+    imageUrl: string;
+  } | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface Color {
+  id: string;
+  name: string;
+  value: string;
+  storeId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface Size {
+  id: string;
+  name: string;
+  value: string;
+  storeId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface Image {
+  id: string;
+  url: string;
+  productId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface Product {
+  id: string;
+  name: string;
+  description?: string | null;
+  price: number;
+  categoryId: string;
+  isFeatured: boolean;
+  isArchived: boolean;
+  storeId: string;
+  category?: Category | null;
+  images: Image[];
+  variations: {
+    id: string;
+    colorId: string;
+    sizeId: string;
+    stock: number;
+    color: Color;
+    size: Size;
+  }[];
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 const formSchema = z.object({
   name: z.string().min(1, 'Le champ doit contenir au moins un caractère.'),
@@ -40,8 +103,6 @@ const formSchema = z.object({
   images: z.object({ url: z.string() }).array(),
   price: z.coerce.number().min(1),
   categoryId: z.string().min(1),
-  colorId: z.string().min(1),
-  sizeId: z.string().min(1),
   isFeatured: z.boolean().default(false).optional(),
   isArchived: z.boolean().default(false).optional(),
 });
@@ -71,6 +132,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [variations, setVariations] = useState(initialData?.variations || []);
 
   const title = initialData ? 'Modifier le produit' : 'Créer un produit';
   const description = initialData ? 'Modifier un produit' : 'Créer un nouveau produit';
@@ -81,21 +143,43 @@ export const ProductForm: React.FC<ProductFormProps> = ({
     resolver: zodResolver(formSchema),
     defaultValues: initialData
       ? {
-        ...initialData,
-        price: parseFloat(String(initialData?.price)),
+        name: initialData.name,
+        description: initialData.description ?? undefined,
+        images: initialData.images.map(img => ({ url: img.url })),
+        price: parseFloat(String(initialData.price)),
+        categoryId: initialData.categoryId,
+        isFeatured: initialData.isFeatured,
+        isArchived: initialData.isArchived,
       }
       : {
         name: '',
-        description: '',
+        description: undefined,
         images: [],
         price: 0,
         categoryId: '',
-        colorId: '',
-        sizeId: '',
         isFeatured: false,
         isArchived: false,
       },
   });
+
+  const onImageUpload = async (img: { url: string }) => {
+    try {
+      setUploading(true);
+      const response = await axios.post(`/api/${params.storeId}/upload`, { url: img.url });
+      const uploadedImage = { url: response.data.url };
+      
+      const currentImages = form.getValues('images') || [];
+      form.setValue('images', [...currentImages, uploadedImage], {
+        shouldValidate: true,
+        shouldDirty: true
+      });
+    } catch (error) {
+      console.error('Image upload error:', error);
+      toast.error('Échec du téléchargement de l\'image');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   useEffect(() => {
     console.log('Initial form values:', {
@@ -107,25 +191,33 @@ export const ProductForm: React.FC<ProductFormProps> = ({
 
   const onSubmit = async (data: ProductFormValues) => {
     try {
-      console.log('Submitting form data:', {
-        ...data,
-        images: data.images.map(img => img.url)
-      });
-
       setLoading(true);
 
+      const formData = {
+        ...data,
+      };
+
       if (initialData) {
-        await axios.patch(`/api/${params.storeId}/products/${params.productId}`, data);
+        // Mettre à jour le produit
+        await axios.patch(`/api/${params.storeId}/products/${params.productId}`, formData);
+        
+        // Mettre à jour les variations
+        await axios.post(`/api/${params.storeId}/products/${params.productId}/variations`, {
+          variations: variations.map(v => ({
+            colorId: v.colorId,
+            sizeId: v.sizeId,
+            stock: v.stock ? parseInt(String(v.stock)) : 0
+          }))
+        });
       } else {
-        await axios.post(`/api/${params.storeId}/products`, data);
+        await axios.post(`/api/${params.storeId}/products`, formData);
       }
 
       router.refresh();
       router.push(`/${params.storeId}/products`);
       toast.success(toastMessage);
-    } catch (error) {
-      console.error('Form submission error:', error);
-      toast.error('Something went wrong.');
+    } catch (error: any) {
+      toast.error('Une erreur est survenue.');
     } finally {
       setLoading(false);
     }
@@ -184,58 +276,18 @@ export const ProductForm: React.FC<ProductFormProps> = ({
               <FormItem>
                 <FormLabel className="mb-2">Images</FormLabel>
                 <ImagesUpload
-                  value={
-                    form.getValues('images')?.map((img) => img.url) || 
-                    initialData?.images?.map((img) => img.url) || 
-                    []
-                  }
+                  value={field.value?.map((img) => img.url) || []}
                   onChange={(newUrls) => {
-                    const currentImages = form.getValues('images') || [];
-                    
-                    // Créer de nouveaux objets image avec des URLs uniques
-                    const newImages = newUrls
-                      .filter(url => !currentImages.some(img => img.url === url))
-                      .map(url => ({ 
-                        url, 
-                        id: crypto.randomUUID() 
-                      }));
-
-                    // Fusionner les images existantes et les nouvelles
-                    const updatedImages = [
-                      ...currentImages,
-                      ...newImages
-                    ];
-
-                    console.log('Updating images:', {
-                      currentImages,
-                      newUrls,
-                      updatedImages
-                    });
-
-                    form.setValue('images', updatedImages, { 
-                      shouldValidate: true,
-                      shouldDirty: true
-                    });
+                    field.onChange(newUrls.map(url => ({ url })));
                   }}
                   onRemove={(urlToRemove) => {
-                    const currentImages = form.getValues('images') || [];
-                    const updatedImages = currentImages.filter(
-                      (img) => img.url !== urlToRemove
+                    field.onChange(
+                      field.value?.filter(img => img.url !== urlToRemove) || []
                     );
-
-                    console.log('Removing image:', {
-                      urlToRemove,
-                      currentImages,
-                      updatedImages
-                    });
-
-                    form.setValue('images', updatedImages, { 
-                      shouldValidate: true,
-                      shouldDirty: true
-                    });
                   }}
                   onUploadStart={() => setUploading(true)}
                   onUploadEnd={() => setUploading(false)}
+                  disabled={uploading}
                 />
                 <FormMessage />
               </FormItem>
@@ -327,114 +379,67 @@ export const ProductForm: React.FC<ProductFormProps> = ({
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
-              name="sizeId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Taille</FormLabel>
-                  <Select
-                    disabled={loading}
-                    onValueChange={field.onChange}
-                    value={field.value}
-                    defaultValue={field.value}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue
-                          defaultValue={field.value}
-                          placeholder="Selectionner une taille"
-                        />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {sizes.map((size) => (
-                        <SelectItem key={size.id} value={size.id}>
-                          {size.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="colorId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Couleur</FormLabel>
-                  <Select
-                    disabled={loading}
-                    onValueChange={field.onChange}
-                    value={field.value}
-                    defaultValue={field.value}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue
-                          defaultValue={field.value}
-                          placeholder="Selectionner une couleur"
-                        />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {colors.map((color) => (
-                        <SelectItem key={color.id} value={color.id}>
-                          {color.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="isFeatured"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
-                  <FormControl>
-                    <Checkbox
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      style={{ border: '1px solid #333' }}
-                    />
-                  </FormControl>
-                  <div className="space-y-1 leading-none">
-                    <FormLabel>En vedette</FormLabel>
-                    <FormDescription>
-                      Ce produit apparaîtra sur la page d&apos;accueil
-                    </FormDescription>
-                  </div>
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="isArchived"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
-                  <FormControl>
-                    <Checkbox
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      style={{ border: '1px solid #333' }}
-                    />
-                  </FormControl>
-                  <div className="space-y-1 leading-none">
-                    <FormLabel>Masqué</FormLabel>
-                    <FormDescription>
-                      ce produit n&apos;apparaîtra nulle part dans la boutique.
-                    </FormDescription>
-                  </div>
-                </FormItem>
-              )}
+          </div>
+          <Separator />
+          <div className="grid gap-8 mb-8">
+            <VariationsForm
+              productId={initialData?.id || ''}
+              storeId={Array.isArray(params.storeId) ? params.storeId[0] : params.storeId}
+              sizes={sizes}
+              colors={colors}
+              initialVariations={variations}
+              onSuccess={(newVariations) => {
+                setVariations(newVariations);
+              }}
             />
           </div>
-          <Button disabled={loading || uploading} className="ml-auto" type="submit">
+          <FormField
+            control={form.control}
+            name="isFeatured"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    style={{ border: '1px solid #333' }}
+                  />
+                </FormControl>
+                <div className="space-y-1 leading-none">
+                  <FormLabel>En vedette</FormLabel>
+                  <FormDescription>
+                    Ce produit apparaîtra sur la page d&apos;accueil
+                  </FormDescription>
+                </div>
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="isArchived"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    style={{ border: '1px solid #333' }}
+                  />
+                </FormControl>
+                <div className="space-y-1 leading-none">
+                  <FormLabel>Masqué</FormLabel>
+                  <FormDescription>
+                    ce produit n&apos;apparaîtra nulle part dans la boutique.
+                  </FormDescription>
+                </div>
+              </FormItem>
+            )}
+          />
+          <Button 
+            disabled={loading || uploading} 
+            className="ml-auto" 
+            type="submit"
+          >
             {action}
           </Button>
         </form>

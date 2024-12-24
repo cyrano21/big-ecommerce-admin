@@ -47,9 +47,13 @@ export async function GET(
       },
       include: {
         category: true,
-        size: true,
-        color: true,
-        images: true
+        images: true,
+        variations: {
+          include: {
+            color: true,
+            size: true
+          }
+        }
       }
     })
 
@@ -79,8 +83,7 @@ export async function PATCH(
       description,
       price,
       categoryId,
-      colorId,
-      sizeId,
+      variations,
       images,
       isFeatured,
       isArchived,
@@ -94,12 +97,10 @@ export async function PATCH(
       !name ||
       !price ||
       !categoryId ||
-      !colorId ||
-      !sizeId ||
       !images ||
       !images.length
     ) {
-      return new NextResponse('Tous les champs sont obligatoires', {
+      return new NextResponse('Les champs nom, prix, catégorie et images sont obligatoires', {
         status: 400,
       })
     }
@@ -121,29 +122,57 @@ export async function PATCH(
       return new NextResponse('Non autorisé', { status: 403 })
     }
 
-    const product = await prismadb.product.update({
-      where: { id: params.productId },
+    // Supprimer les variations existantes si de nouvelles variations sont fournies
+    if (variations) {
+      await prismadb.productVariation.deleteMany({
+        where: {
+          productId: params.productId
+        }
+      });
+    }
+
+    const updatedProduct = await prismadb.product.update({
+      where: {
+        id: params.productId,
+      },
       data: {
         name,
         description,
         price,
         categoryId,
-        colorId,
-        sizeId,
-        isFeatured,
-        isArchived,
         images: {
           deleteMany: {},
           createMany: {
-            data: images.map((image: { url: string }) => ({
-              url: image.url,
-            })),
+            data: [...images.map((image: { url: string }) => image)],
           },
         },
+        ...(variations && variations.length > 0 && {
+          variations: {
+            createMany: {
+              data: variations.map((variation: { colorId: string, sizeId: string, stock: number }) => ({
+                colorId: variation.colorId,
+                sizeId: variation.sizeId,
+                stock: variation.stock
+              }))
+            }
+          }
+        }),
+        isFeatured,
+        isArchived,
+      },
+      include: {
+        images: true,
+        category: true,
+        variations: {
+          include: {
+            size: true,
+            color: true
+          }
+        }
       },
     })
 
-    return NextResponse.json(product)
+    return NextResponse.json(updatedProduct)
   } catch (error) {
     console.log('[PRODUCT_PATCH]', error)
     return new NextResponse('Erreur interne du serveur', { status: 500 })

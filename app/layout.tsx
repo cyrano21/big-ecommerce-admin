@@ -22,8 +22,8 @@ export default function RootLayout({
 }) {
   return (
     <ClerkProvider>
-      <html lang="fr">
-        <body className={inter.className}>
+      <html lang="fr" suppressHydrationWarning>
+        <body className={inter.className} suppressHydrationWarning>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
             <ToasterProvider />
             <ModalProvider />
