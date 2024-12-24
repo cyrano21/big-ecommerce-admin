@@ -1,0 +1,188 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider     = "cockroachdb"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+model User {
+  id     String  @id @default(uuid())
+  stores Store[]
+  orders Order[] // Ajout de la relation inverse pour Order
+}
+
+model Store {
+  id         String      @id @default(uuid())
+  name       String
+  address    String
+  user       User        @relation(fields: [userId], references: [id])
+  userId     String
+  billboards Billboard[] @relation("StoreToBillboard")
+  categories Category[]  @relation("StoreToCategory")
+  sizes      Size[]      @relation("StoreToSize")
+  colors     Color[]     @relation("StoreToColor")
+  products   Product[]   @relation("StoreToProduct")
+  orders     Order[]     @relation("StoreToOrder")
+  sales      Sale[]      @relation("StoreToSale")
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@index([userId])
+}
+
+model Billboard {
+  id         String     @id @default(uuid())
+  storeId    String
+  store      Store      @relation("StoreToBillboard", fields: [storeId], references: [id])
+  label      String
+  imageUrl   String
+  categories Category[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([storeId, createdAt])
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  storeId     String
+  store       Store     @relation("StoreToCategory", fields: [storeId], references: [id])
+  billboardId String
+  billboard   Billboard @relation(fields: [billboardId], references: [id])
+  products    Product[] @relation("CategoryToProduct")
+  name        String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now())
+
+  @@index([storeId])
+  @@index([billboardId])
+}
+
+model Size {
+  id        String    @id @default(uuid())
+  storeId   String
+  store     Store     @relation("StoreToSize", fields: [storeId], references: [id])
+  name      String
+  value     String
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now())
+
+  @@index([storeId])
+}
+
+model Color {
+  id        String    @id @default(uuid())
+  storeId   String
+  store     Store     @relation("StoreToColor", fields: [storeId], references: [id])
+  name      String
+  value     String
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now())
+
+  @@index([storeId])
+}
+
+model Product {
+  id          String    @id @default(uuid())
+  storeId     String
+  store       Store     @relation("StoreToProduct", fields: [storeId], references: [id])
+  categoryId  String
+  category    Category  @relation("CategoryToProduct", fields: [categoryId], references: [id])
+  name        String
+  price       Decimal
+  isFeatured  Boolean   @default(false)
+  isArchived  Boolean   @default(false)
+  sizeId      String
+  size        Size      @relation(fields: [sizeId], references: [id])
+  colorId     String
+  color       Color      @relation(fields: [colorId], references: [id])
+  description String     @default("")
+  images      Image[]
+  orderItems  OrderItem[]
+  saleItems   SaleItem[]
+  stock       Int       @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([storeId])
+  @@index([categoryId])
+  @@index([sizeId])
+  @@index([colorId])
+}
+
+model Image {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  @@index([productId])
+}
+
+model Order {
+  id           String      @id @default(uuid())
+  userId       String      @default("default-user-id")
+  user         User        @relation(fields: [userId], references: [id]) // Ajout de la relation avec User
+  storeId      String
+  store        Store       @relation("StoreToOrder", fields: [storeId], references: [id])
+  orderItems   OrderItem[]
+  customerName String      @default("Default Customer")
+  isPaid       Boolean     @default(false)
+  phone        String      @default("")
+  address      String      @default("")
+  totalPrice   Decimal     @default(0)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @default(now())
+
+  @@index([storeId])
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int?
+  price     Decimal
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model Sale {
+  id           String     @id @default(uuid())
+  storeId      String
+  store        Store      @relation("StoreToSale", fields: [storeId], references: [id])
+  saleItems    SaleItem[]
+  customerName String
+  isPaid       Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @default(now())
+
+  @@index([storeId])
+}
+
+model SaleItem {
+  id        String   @id @default(uuid())
+  saleId    String
+  sale      Sale     @relation(fields: [saleId], references: [id])
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int
+  price     Decimal
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  @@index([saleId])
+  @@index([productId])
+}
