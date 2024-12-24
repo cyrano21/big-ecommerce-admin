@@ -4,6 +4,16 @@ import { Trash } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from './button';
 
+interface CloudinaryUploadWidgetOptions {
+  cloudName: string;
+  uploadPreset: string;
+  multiple?: boolean;
+  maxFiles?: number;
+  folder?: string;
+  resourceType?: string;
+  cropping?: boolean;
+}
+
 const ImagesUpload = ({
   value: initialValue = [],
   onChange,
@@ -22,10 +32,6 @@ const ImagesUpload = ({
   const [images, setImages] = useState<string[]>(initialValue);
 
   useEffect(() => {
-    console.log('ImagesUpload - Initial value received:', {
-      initialValue,
-      currentImages: images
-    });
     setImages(initialValue);
   }, [initialValue]);
 
@@ -58,33 +64,21 @@ const ImagesUpload = ({
         folder: 'products',
         resourceType: 'image',
         cropping: false,
-      },
+      } as CloudinaryUploadWidgetOptions,
       (error: any, result: { event: string; info: { secure_url: string } | { secure_url: string }[] }) => {
-        console.log('Cloudinary upload result:', result);
-        
         if (!error && result && result.event === 'success') {
-          // Gère le cas où plusieurs fichiers sont uploadés simultanément
           const uploadedUrls = Array.isArray(result.info) 
             ? result.info.map(item => item.secure_url)
             : [result.info.secure_url];
           
-          console.log('Uploaded URLs:', uploadedUrls);
+          const newUrls = [...images, ...uploadedUrls].slice(0, 5);
+          setImages(newUrls);
+          onChange(newUrls);
           
-          // Filtrer les URLs déjà existantes
-          const newUrls = uploadedUrls.filter(url => !images.includes(url));
-          
-          console.log('New URLs to add:', newUrls);
-          
-          // Ajouter les nouvelles URLs à l'état existant
-          const updatedImages = [...images, ...newUrls];
-          
-          console.log('Updated images:', updatedImages);
-          
-          // Mettre à jour l'état local et appeler onChange
-          setImages(updatedImages);
-          onChange(updatedImages);
+          if (onUploadEnd) {
+            onUploadEnd();
+          }
         } else if (result && result.event === 'queues-end') {
-          // Événement final de l'upload multiple
           onUploadEnd?.();
         } else if (result && result.event === 'close') {
           onUploadEnd?.();
@@ -109,34 +103,30 @@ const ImagesUpload = ({
       <Script
         src="https://widget.cloudinary.com/v2.0/global/all.js"
         strategy="lazyOnload"
-        onLoad={() => console.log('Cloudinary script loaded!')}
+        onLoad={() => {}}
       />
       <div className="mb-4 flex flex-wrap gap-4 items-center justify-start">
-        {console.log('Images value:', images)}
         {images.map((url, index) => (
           <div
             key={index}
-            className="group relative w-full max-w-[300px] h-[300px] rounded-lg overflow-hidden shadow-lg"
+            className="relative w-[200px] h-[200px] rounded-md overflow-hidden"
           >
+            <div className="z-10 absolute top-2 right-2">
+              <Button 
+                type="button" 
+                onClick={() => onRemove ? onRemove(url) : handleRemove(url)} 
+                variant="destructive" 
+                size="sm"
+              >
+                <Trash className="h-4 w-4" />
+              </Button>
+            </div>
             <Image
               fill
+              className="object-cover"
+              alt="Product image"
               src={url}
-              alt="Uploaded"
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-              onError={(e) => {
-                console.error('Image failed to load:', url);
-                e.currentTarget.style.display = 'none';
-              }}
-              className="object-contain"
-              quality={75}
             />
-            <button
-              className="absolute top-0 right-0 p-2 transition-opacity opacity-0 group-hover:opacity-100"
-              onClick={() => handleRemove(url)}
-              style={{ backgroundColor: 'rgba(255,0,0,0.8)' }}
-            >
-              <Trash className="w-5 h-5 text-white" />
-            </button>
           </div>
         ))}
         <Button

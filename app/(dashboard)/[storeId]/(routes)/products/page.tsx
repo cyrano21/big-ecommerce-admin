@@ -4,7 +4,7 @@ import prismadb from '@/lib/prismadb'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { formatter } from '@/lib/utils'
-import { ProductColumn } from './components/columns'
+import { ProductColumn } from '@/types';
 import ProductClient from './components/client'
 
 const ProductsPage = async ({
@@ -38,7 +38,7 @@ const ProductsPage = async ({
     category: item.category.name,
     size: item.size.name,
     color: item.color.value,
-    images: item.images.map((img) => img.url).join(', '),
+    images: item.images.map((img) => img.url),
     createdAt: format(item.createdAt, 'd MMMM yyyy', { locale: fr }),
   }))
 

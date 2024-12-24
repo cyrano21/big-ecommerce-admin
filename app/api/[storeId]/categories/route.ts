@@ -92,30 +92,36 @@ export async function GET(
   { params }: { params: { storeId: string } }
 ) {
   try {
-    console.log('Environment Store URL:', process.env.NEXT_PUBLIC_API_URL)
-    console.log('Requested Store ID:', params.storeId)
+    const { searchParams } = new URL(req.url);
+    const storeId = params.storeId;
 
-    if (!params.storeId) {
-      return new NextResponse("L'identifiant de la boutique est réquis", {
+    if (!storeId) {
+      return new NextResponse("L'identifiant de la boutique est requis", { 
         status: 400,
         headers: corsHeaders,
-      })
+      });
     }
 
     const categories = await prismadb.category.findMany({
-      where: {
-        storeId: params.storeId,
+      where: { 
+        storeId 
       },
-    })
+      include: {
+        billboard: true
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
 
-    return NextResponse.json(categories, { 
-      headers: corsHeaders 
-    })
+    return NextResponse.json(categories, {
+      headers: corsHeaders
+    });
   } catch (error) {
-    console.log('[CATEGORIES_GET]', error)
-    return new NextResponse('Erreur interne du serveur', { 
+    console.error('[CATEGORIES_GET]', error);
+    return new NextResponse('Erreur interne', { 
       status: 500,
-      headers: corsHeaders 
-    })
+      headers: corsHeaders,
+    });
   }
 }
