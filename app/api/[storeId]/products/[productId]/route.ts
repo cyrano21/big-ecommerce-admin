@@ -50,12 +50,23 @@ export async function GET(
         images: true,
         variations: {
           include: {
+            size: true,
             color: true,
-            size: true
+            images: true
           }
         }
       }
     })
+
+    console.log('GET Product - Variations with images:', 
+      product?.variations.map(v => ({
+        id: v.id,
+        color: v.color.name,
+        size: v.size.name,
+        imageCount: v.images.length,
+        images: v.images
+      }))
+    );
 
     if (!product) {
       console.warn('⚠️ Product not found');
@@ -75,106 +86,121 @@ export async function PATCH(
   { params }: { params: { storeId: string; productId: string } }
 ) {
   try {
-    const { userId } = auth()
-    const body = await req.json()
+    const { userId } = auth();
+    const body = await req.json();
 
     const {
       name,
-      description,
       price,
       categoryId,
-      variations,
-      images,
+      description,
       isFeatured,
       isArchived,
-    } = body
+      variations,
+    } = body;
 
     if (!userId) {
-      return new NextResponse('Non autorisé', { status: 401 })
+      return new NextResponse("Non authentifié", { status: 401 });
     }
 
-    if (
-      !name ||
-      !price ||
-      !categoryId ||
-      !images ||
-      !images.length
-    ) {
-      return new NextResponse('Les champs nom, prix, catégorie et images sont obligatoires', {
-        status: 400,
-      })
+    if (!name) {
+      return new NextResponse("Le nom est requis", { status: 400 });
     }
 
-    if (!params.storeId) {
-      return new NextResponse("L'identifiant de la boutique est réquis", {
-        status: 400,
-      })
+    if (!price) {
+      return new NextResponse("Le prix est requis", { status: 400 });
+    }
+
+    if (!categoryId) {
+      return new NextResponse("L'ID de catégorie est requis", { status: 400 });
+    }
+
+    if (!params.productId) {
+      return new NextResponse("L'ID du produit est requis", { status: 400 });
     }
 
     const storeByUserId = await prismadb.store.findFirst({
       where: {
         id: params.storeId,
         userId,
-      },
-    })
+      }
+    });
 
     if (!storeByUserId) {
-      return new NextResponse('Non autorisé', { status: 403 })
+      return new NextResponse("Non autorisé", { status: 403 });
     }
 
-    // Supprimer les variations existantes si de nouvelles variations sont fournies
-    if (variations) {
-      await prismadb.productVariation.deleteMany({
-        where: {
-          productId: params.productId
-        }
-      });
-    }
+    // Supprimer d'abord toutes les variations et images existantes
+    await prismadb.image.deleteMany({
+      where: {
+        productId: params.productId
+      }
+    });
 
+    await prismadb.productVariation.deleteMany({
+      where: {
+        productId: params.productId
+      }
+    });
+
+    // Mettre à jour le produit
     const updatedProduct = await prismadb.product.update({
       where: {
-        id: params.productId,
+        id: params.productId
       },
       data: {
         name,
-        description,
-        price,
+        price: parseFloat(price.toString()),
         categoryId,
-        images: {
-          deleteMany: {},
-          createMany: {
-            data: [...images.map((image: { url: string }) => image)],
-          },
-        },
-        ...(variations && variations.length > 0 && {
-          variations: {
-            createMany: {
-              data: variations.map((variation: { colorId: string, sizeId: string, stock: number }) => ({
-                colorId: variation.colorId,
-                sizeId: variation.sizeId,
-                stock: variation.stock
-              }))
-            }
-          }
-        }),
+        description,
         isFeatured,
         isArchived,
+      }
+    });
+
+    // Créer les nouvelles variations et leurs images
+    if (variations && variations.length > 0) {
+      for (const variation of variations) {
+        const newVariation = await prismadb.productVariation.create({
+          data: {
+            productId: params.productId,
+            colorId: variation.colorId,
+            sizeId: variation.sizeId,
+            stock: parseInt(variation.stock.toString()),
+          }
+        });
+
+        if (variation.images && variation.images.length > 0) {
+          await prismadb.image.createMany({
+            data: variation.images.map((image: any) => ({
+              url: image.url || image,
+              productId: params.productId,
+              variationId: newVariation.id
+            }))
+          });
+        }
+      }
+    }
+
+    // Récupérer le produit mis à jour avec toutes ses relations
+    const finalProduct = await prismadb.product.findUnique({
+      where: {
+        id: params.productId
       },
       include: {
-        images: true,
-        category: true,
         variations: {
           include: {
-            size: true,
-            color: true
+            images: true,
+            color: true,
+            size: true
           }
         }
-      },
-    })
+      }
+    });
 
-    return NextResponse.json(updatedProduct)
+    return NextResponse.json(finalProduct);
   } catch (error) {
-    console.log('[PRODUCT_PATCH]', error)
-    return new NextResponse('Erreur interne du serveur', { status: 500 })
+    console.log("[PRODUCT_PATCH]", error);
+    return new NextResponse("Erreur interne", { status: 500 });
   }
 }

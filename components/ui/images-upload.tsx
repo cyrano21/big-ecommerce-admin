@@ -1,143 +1,129 @@
 import React, { useState, useEffect } from 'react';
-import Script from 'next/script';
-import { Trash } from 'lucide-react';
+import { CldUploadWidget } from 'next-cloudinary';
+import { Button } from '@/components/ui/button';
+import { ImagePlus, Trash } from 'lucide-react';
 import Image from 'next/image';
-import { Button } from './button';
 
-interface CloudinaryUploadWidgetOptions {
-  cloudName: string;
-  uploadPreset: string;
-  multiple?: boolean;
-  maxFiles?: number;
-  folder?: string;
-  resourceType?: string;
-  cropping?: boolean;
+interface ImagesUploadProps {
+  disabled?: boolean;
+  onChange: (value: string[]) => void;
+  onRemove: (value: string) => void;
+  value: string[];
 }
 
-const ImagesUpload = ({
-  value: initialValue = [],
+const ImagesUpload: React.FC<ImagesUploadProps> = ({
+  disabled,
   onChange,
   onRemove,
-  onUploadStart,
-  onUploadEnd,
-  disabled = false,
-}: {
-  value?: string[];
-  onChange: (urls: string[]) => void;
-  onRemove?: (url: string) => void;
-  onUploadStart?: () => void;
-  onUploadEnd?: () => void;
-  disabled?: boolean;
+  value = []
 }) => {
-  const [images, setImages] = useState<string[]>(initialValue);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
-    setImages(initialValue);
-  }, [initialValue]);
+    setIsMounted(true);
+  }, []);
 
-  const handleSuccess = (newUrls: string[]) => {
-    const uniqueNewUrls = newUrls.filter(url => !images.includes(url));
-    const updatedImages = [...images, ...uniqueNewUrls];
-    
-    setImages(updatedImages);
-    onChange(updatedImages);
-    onUploadEnd?.();
-  };
-
-  const openCloudinaryWidget = () => {
-    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'default_cloud_name';
-    const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'default_upload_preset';
-
-    if (!cloudName || !uploadPreset) {
-      console.error('Cloudinary configuration is missing!');
-      return;
+  const onUpload = (result: any) => {
+    if (result?.info?.secure_url) {
+      const newUrl = result.info.secure_url;
+      console.log('Image URL from Cloudinary:', newUrl);
+      
+      // S'assurer que value est toujours un tableau
+      const currentValue = Array.isArray(value) ? value : [];
+      const newValue = [...currentValue, newUrl];
+      
+      console.log('Updated image array:', newValue);
+      onChange(newValue);
+    } else {
+      console.error('Failed to get secure_url from result:', result);
     }
-
-    onUploadStart?.();
-
-    const myWidget = window.cloudinary.createUploadWidget(
-      {
-        cloudName: cloudName,
-        uploadPreset: uploadPreset,
-        multiple: true,
-        maxFiles: 5,
-        folder: 'products',
-        resourceType: 'image',
-        cropping: false,
-      } as CloudinaryUploadWidgetOptions,
-      (error: any, result: { event: string; info: { secure_url: string } | { secure_url: string }[] }) => {
-        if (!error && result && result.event === 'success') {
-          const uploadedUrls = Array.isArray(result.info) 
-            ? result.info.map(item => item.secure_url)
-            : [result.info.secure_url];
-          
-          const newUrls = [...images, ...uploadedUrls].slice(0, 5);
-          setImages(newUrls);
-          onChange(newUrls);
-          
-          if (onUploadEnd) {
-            onUploadEnd();
-          }
-        } else if (result && result.event === 'queues-end') {
-          onUploadEnd?.();
-        } else if (result && result.event === 'close') {
-          onUploadEnd?.();
-        } else if (error) {
-          console.error('Upload error:', error);
-          onUploadEnd?.();
-        }
-      }
-    );
-    myWidget.open();
   };
 
-  const handleRemove = (urlToRemove: string) => {
-    const updatedImages = images.filter(url => url !== urlToRemove);
-    setImages(updatedImages);
-    onChange(updatedImages);
-    onRemove?.(urlToRemove);
-  };
+  if (!isMounted) {
+    return null;
+  }
+
+  // S'assurer que value est toujours un tableau
+  const safeValue = Array.isArray(value) ? value : [];
+  console.log('Rendering images with values:', safeValue);
 
   return (
-    <>
-      <Script
-        src="https://widget.cloudinary.com/v2.0/global/all.js"
-        strategy="lazyOnload"
-        onLoad={() => {}}
-      />
-      <div className="mb-4 flex flex-wrap gap-4 items-center justify-start">
-        {images.map((url, index) => (
-          <div
-            key={index}
-            className="relative w-[200px] h-[200px] rounded-md overflow-hidden"
-          >
-            <div className="z-10 absolute top-2 right-2">
-              <Button 
-                type="button" 
-                onClick={() => onRemove ? onRemove(url) : handleRemove(url)} 
-                variant="destructive" 
-                size="sm"
-              >
-                <Trash className="h-4 w-4" />
-              </Button>
+    <div>
+      <div className="mb-4 flex items-center gap-4 flex-wrap">
+        {safeValue.map((url, index) => {
+          if (!url) {
+            console.warn('Undefined URL found at index:', index);
+            return null;
+          }
+
+          return (
+            <div
+              key={`${url}-${index}`}
+              className="relative w-[200px] h-[200px] rounded-lg overflow-hidden"
+            >
+              <div className="z-10 absolute top-2 right-2">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    console.log('Removing image:', url);
+                    onRemove(url);
+                  }}
+                  variant="destructive"
+                  size="sm"
+                >
+                  <Trash className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="relative w-full h-full">
+                <Image
+                  className="object-cover"
+                  alt="Image"
+                  src={url}
+                  fill
+                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                  onError={(e) => {
+                    console.error('Image failed to load:', url);
+                    const imgElement = e.target as HTMLImageElement;
+                    imgElement.style.display = 'none';
+                  }}
+                />
+              </div>
             </div>
-            <Image
-              fill
-              className="object-cover"
-              alt="Product image"
-              src={url}
-            />
-          </div>
-        ))}
-        <Button
-          disabled={disabled}
-          onClick={openCloudinaryWidget}
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-        >
-          Upload Image
-        </Button>
+          );
+        })}
       </div>
-    </>
+      <CldUploadWidget 
+        onUpload={onUpload}
+        uploadPreset={process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET}
+        options={{
+          maxFiles: 4,
+          sources: ['local', 'url', 'camera'],
+          multiple: true,
+          clientAllowedFormats: ["png", "gif", "jpeg", "jpg", "webp"],
+          maxFileSize: 10000000,
+          showAdvancedOptions: false,
+          cropping: false,
+        }}
+      >
+        {({ open }) => {
+          const onClick = () => {
+            open();
+          };
+
+          return (
+            <Button 
+              type="button"
+              disabled={disabled} 
+              variant="secondary" 
+              onClick={onClick}
+            >
+              <ImagePlus className="h-4 w-4 mr-2" />
+              Ajouter une image
+            </Button>
+          );
+        }}
+      </CldUploadWidget>
+    </div>
   );
 };
 

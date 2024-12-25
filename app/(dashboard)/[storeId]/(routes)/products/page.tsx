@@ -4,7 +4,27 @@ import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import { formatter } from '@/lib/utils'
 import { ProductColumn } from '@/types';
+import { Product, ProductVariation } from "@prisma/client";
 import ProductClient from './components/client'
+
+type ProductWithRelations = Product & {
+  category: {
+    name: string;
+  };
+  images: {
+    url: string;
+  }[];
+  variations: (ProductVariation & {
+    color: {
+      id: string;
+      value: string;
+    };
+    size: {
+      id: string;
+      name: string;
+    };
+  })[];
+};
 
 const ProductsPage = async ({
   params,
@@ -15,26 +35,45 @@ const ProductsPage = async ({
 }) => {
   const products = await prismadb.product.findMany({
     where: {
-      storeId: params.storeId,
+      storeId: params.storeId
     },
     include: {
-      category: true,
-      images: true,
+      category: {
+        select: {
+          name: true
+        }
+      },
+      images: {
+        select: {
+          url: true
+        }
+      },
       variations: {
         include: {
-          color: true,
-          size: true
+          color: {
+            select: {
+              id: true,
+              value: true
+            }
+          },
+          size: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
         }
       }
     },
     orderBy: {
-      createdAt: 'desc',
-    },
+      createdAt: 'desc'
+    }
   })
 
-  const formattedProducts: ProductColumn[] = products.map((item) => {
-    // Prendre la première variation comme représentative
+  const formattedProducts: ProductColumn[] = (products as ProductWithRelations[]).map((item) => {
+    // Prendre la première variation comme représentative pour l'affichage principal
     const firstVariation = item.variations[0];
+    const totalStock = item.variations.reduce((sum, v) => sum + v.stock, 0);
     
     return {
       id: item.id,
@@ -45,8 +84,17 @@ const ProductsPage = async ({
       category: item.category.name,
       size: firstVariation?.size.name ?? 'N/A',
       color: firstVariation?.color.value ?? 'N/A',
-      images: item.images.map((img) => img.url),
+      stock: totalStock,
+      images: item.images.map(img => ({ url: img.url })),
       createdAt: format(item.createdAt, 'd MMMM yyyy', { locale: fr }),
+      variations: item.variations.map(v => ({
+        id: v.id,
+        colorId: v.color.id,
+        colorValue: v.color.value,
+        sizeId: v.size.id,
+        stock: v.stock,
+        images: []
+      })),
     };
   });
 

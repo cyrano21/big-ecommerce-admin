@@ -13,6 +13,13 @@ const ProductPage = async ({
     },
     include: {
       images: true,
+      variations: {
+        include: {
+          color: true,
+          size: true,
+          images: true
+        }
+      }
     },
   })
   const categories = await prismadb.category.findMany({
